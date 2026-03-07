@@ -8,5 +8,6 @@ langchain-groq         # For Groq LLM (free tier)
 langchain-classic      # For chains (RetrievalQA)
 chromadb
 pydantic
+python-multipart     # Required for file uploads
 sentence-transformers  # For HuggingFace embeddings
 torch                  # Required for sentence-transformers

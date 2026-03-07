@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { FileBrowser } from "@/components/file-browser";
+import { FileUpload } from "@/components/file-upload";
 import { Send, Moon, Sun, Menu, X } from "lucide-react";
 import clsx from "clsx";
 
@@ -25,17 +26,19 @@ export default function Home() {
   const [darkMode, setDarkMode] = useState(false);
   const [isLibraryOpen, setIsLibraryOpen] = useState(true);
   const [ingestedBooks, setIngestedBooks] = useState<Set<string>>(new Set());
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Load preferences from localStorage on mount
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme-preference');
     const savedLibraryState = localStorage.getItem('library-open');
-    
+
     if (savedTheme === 'dark') {
       setDarkMode(true);
       document.documentElement.classList.add('dark');
     }
-    
+
     // Default to open if no preference saved, otherwise use saved preference
     if (savedLibraryState !== null) {
       setIsLibraryOpen(savedLibraryState === 'true');
@@ -46,7 +49,7 @@ export default function Home() {
   function toggleDarkMode() {
     const newDarkMode = !darkMode;
     setDarkMode(newDarkMode);
-    
+
     const htmlElement = document.documentElement;
     if (newDarkMode) {
       htmlElement.classList.add('dark');
@@ -73,10 +76,10 @@ export default function Home() {
 
     try {
       const encodedFilename = encodeURIComponent(bookPath);
-      const response = await fetch(`http://localhost:8000/ingest?filename=${encodedFilename}`, { 
-        method: 'POST' 
+      const response = await fetch(`http://localhost:8000/ingest?filename=${encodedFilename}`, {
+        method: 'POST'
       });
-      
+
       if (response.ok) {
         setIngestedBooks(prev => new Set(prev).add(bookPath));
         console.log(`Auto-ingested: ${bookPath}`);
@@ -98,7 +101,7 @@ export default function Home() {
     }
     setPreviousBook(book);
     setSelectedBook(book);
-    
+
     // Auto-ingest when a book is selected
     if (book && !ingestedBooks.has(book)) {
       autoIngestBook(book);
@@ -121,34 +124,34 @@ export default function Home() {
         role: msg.role,
         content: msg.content
       }));
-      
+
       const res = await fetch("http://localhost:8000/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          message: userMessage, 
+        body: JSON.stringify({
+          message: userMessage,
           book_context: selectedBook?.split('/').pop(),
           chat_history: recentHistory
         }),
       });
-      
+
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ detail: res.statusText }));
         throw new Error(errorData.detail || `Server error: ${res.status}`);
       }
-      
+
       const data = await res.json();
-      setChatHistory([...newHistory, { 
-        role: 'ai', 
-        content: data.reply, 
-        sources: data.sources || [] 
+      setChatHistory([...newHistory, {
+        role: 'ai',
+        content: data.reply,
+        sources: data.sources || []
       }]);
     } catch (e: any) {
       console.error("Chat error:", e);
       const errorMsg = e.message || "Error contacting the tutor. Make sure the backend is running.";
-      setChatHistory([...newHistory, { 
-        role: 'ai', 
-        content: `Error: ${errorMsg}` 
+      setChatHistory([...newHistory, {
+        role: 'ai',
+        content: `Error: ${errorMsg}`
       }]);
     }
   }
@@ -158,15 +161,15 @@ export default function Home() {
     setIsIngesting(true);
     try {
       const encodedFilename = encodeURIComponent(selectedBook);
-      const response = await fetch(`http://localhost:8000/ingest?filename=${encodedFilename}`, { 
-        method: 'POST' 
+      const response = await fetch(`http://localhost:8000/ingest?filename=${encodedFilename}`, {
+        method: 'POST'
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: response.statusText }));
         throw new Error(errorData.detail || `Server error: ${response.status}`);
       }
-      
+
       const data = await response.json();
       setIngestedBooks(prev => new Set(prev).add(selectedBook));
       alert(`Success! ${data.message || 'Book ingrained in memory!'}`);
@@ -179,18 +182,25 @@ export default function Home() {
     }
   }
 
+  function handleUploadComplete() {
+    // Trigger file browser refresh
+    setRefreshKey(prev => prev + 1);
+  }
+
   return (
     <div className="flex h-screen bg-stone-100 dark:bg-slate-900 font-sans transition-colors duration-300">
       {/* Sidebar */}
       {isLibraryOpen && (
         <div className="w-64 transition-all duration-300 ease-in-out">
-          <FileBrowser 
-            onSelectBook={handleBookSelect} 
+          <FileBrowser
+            onSelectBook={handleBookSelect}
             onClose={toggleLibrary}
+            onUploadClick={() => setIsUploadOpen(true)}
+            refreshKey={refreshKey}
           />
         </div>
       )}
-      
+
       {/* Main Content: Split View */}
       <div className="flex-1 flex flex-col h-full w-full">
         {/* Header */}
@@ -260,8 +270,8 @@ export default function Home() {
               {chatHistory.map((msg, i) => (
                 <div key={i} className={clsx(
                   "p-3 rounded-lg text-sm max-w-[90%]",
-                  msg.role === 'user' 
-                    ? "bg-stone-100 dark:bg-slate-700 ml-auto text-stone-800 dark:text-slate-100" 
+                  msg.role === 'user'
+                    ? "bg-stone-100 dark:bg-slate-700 ml-auto text-stone-800 dark:text-slate-100"
                     : "bg-blue-50 dark:bg-blue-900/30 text-blue-900 dark:text-blue-100 border border-blue-100 dark:border-blue-800/50"
                 )}>
                   <div>{msg.content}</div>
@@ -298,6 +308,14 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* Upload modal */}
+      {isUploadOpen && (
+        <FileUpload
+          onUploadComplete={handleUploadComplete}
+          onClose={() => setIsUploadOpen(false)}
+        />
+      )}
     </div>
   );
 }
