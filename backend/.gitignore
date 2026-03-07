@@ -1,0 +1,6 @@
+__pycache__
+uploads
+db_storage
+users.db
+venv
+.env
