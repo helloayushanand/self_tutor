@@ -8,6 +8,7 @@ interface FileBrowserProps {
     onClose?: () => void;
     onUploadClick: () => void;
     refreshKey: number;
+    authHeaders: () => Record<string, string>;
 }
 
 interface FileItem {
@@ -54,13 +55,13 @@ function buildFolderTree(files: FileItem[]): FolderNode {
     return root;
 }
 
-export function FileBrowser({ onSelectBook, onClose, onUploadClick, refreshKey }: FileBrowserProps) {
+export function FileBrowser({ onSelectBook, onClose, onUploadClick, refreshKey, authHeaders }: FileBrowserProps) {
     const [books, setBooks] = useState<FileItem[]>([]);
     const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
 
     useEffect(() => {
         // Fetch books from FastAPI backend
-        fetch("http://localhost:8000/books")
+        fetch("http://localhost:8000/books", { headers: authHeaders() })
             .then((res) => res.json())
             .then((data) => {
                 setBooks(data);
@@ -98,6 +99,7 @@ export function FileBrowser({ onSelectBook, onClose, onUploadClick, refreshKey }
             const encoded = encodeURIComponent(filePath.replace("uploads/", ""));
             const res = await fetch(`http://localhost:8000/upload/${encoded}`, {
                 method: "DELETE",
+                headers: authHeaders(),
             });
             if (res.ok) {
                 setBooks(prev => prev.filter(b => b.path !== filePath));

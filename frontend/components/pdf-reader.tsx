@@ -1,19 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo, memo } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 interface PdfReaderProps {
     file: string | null;
+    authToken: string | null;
 }
 
-export function PdfReader({ file }: PdfReaderProps) {
+export const PdfReader = memo(function PdfReader({ file, authToken }: PdfReaderProps) {
     const [currentPage, setCurrentPage] = useState<number>(1);
     const [pageInput, setPageInput] = useState<string>("1");
+    // Track file changes to reset page and generate a stable cache key
+    const [fileKey, setFileKey] = useState<number>(0);
+    const [prevFile, setPrevFile] = useState<string | null>(null);
+    if (file !== prevFile) {
+        setPrevFile(file);
+        setFileKey(k => k + 1);
+        setCurrentPage(1);
+        setPageInput("1");
+    }
 
-    // URL encode the file path for the API
-    const encodedFile = file ? encodeURIComponent(file) : "";
-    const basePdfUrl = file ? `http://localhost:8000/files/${encodedFile}` : null;
+    // Stable URL — only recalculated when file, fileKey, or authToken changes
+    const basePdfUrl = useMemo(() => {
+        if (!file) return null;
+        const encodedFile = encodeURIComponent(file);
+        const tokenParam = authToken ? `&token=${encodeURIComponent(authToken)}` : "";
+        return `http://localhost:8000/files/${encodedFile}?_=${fileKey}${tokenParam}`;
+    }, [file, fileKey, authToken]);
+
     const pdfUrl = basePdfUrl ? `${basePdfUrl}#page=${currentPage}` : null;
 
     function goToPrevPage() {
@@ -73,7 +88,7 @@ export function PdfReader({ file }: PdfReaderProps) {
                 >
                     <ChevronLeft className="w-5 h-5 text-stone-600 dark:text-slate-300" />
                 </button>
-                
+
                 <form onSubmit={handlePageInputSubmit} className="flex items-center gap-2">
                     <span className="text-sm text-stone-600 dark:text-slate-300">Page</span>
                     <input
@@ -85,7 +100,7 @@ export function PdfReader({ file }: PdfReaderProps) {
                         className="w-16 px-2 py-1 text-sm border border-stone-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-stone-900 dark:text-slate-100 rounded text-center focus:outline-none focus:ring-1 focus:ring-stone-400 dark:focus:ring-slate-500 transition-colors"
                     />
                 </form>
-                
+
                 <button
                     onClick={goToNextPage}
                     className="p-2 rounded hover:bg-stone-100 dark:hover:bg-slate-700 transition-colors"
@@ -95,11 +110,11 @@ export function PdfReader({ file }: PdfReaderProps) {
                 </button>
             </div>
 
-            {/* PDF iframe */}
+            {/* PDF iframe — only re-mounts when basePdfUrl changes (i.e. file switch) */}
             <div className="flex-1 relative bg-stone-300 dark:bg-slate-900 transition-colors duration-300">
                 {pdfUrl ? (
                     <iframe
-                        key={pdfUrl}
+                        key={basePdfUrl}
                         src={pdfUrl}
                         className="w-full h-full border-0"
                         title="PDF Viewer"
@@ -112,4 +127,4 @@ export function PdfReader({ file }: PdfReaderProps) {
             </div>
         </div>
     );
-}
+});

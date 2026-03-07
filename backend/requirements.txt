@@ -9,5 +9,8 @@ langchain-classic      # For chains (RetrievalQA)
 chromadb
 pydantic
 python-multipart     # Required for file uploads
+sqlalchemy           # ORM for SQLite user database
+python-jose[cryptography]  # JWT token creation/validation
+bcrypt               # Password hashing
 sentence-transformers  # For HuggingFace embeddings
 torch                  # Required for sentence-transformers

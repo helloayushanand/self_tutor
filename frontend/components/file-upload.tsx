@@ -6,6 +6,7 @@ import { Upload, X, FileText, Archive, CheckCircle, AlertCircle, Loader2 } from 
 interface FileUploadProps {
     onUploadComplete: () => void;
     onClose: () => void;
+    authHeaders: () => Record<string, string>;
 }
 
 type UploadStatus = "idle" | "uploading" | "success" | "error";
@@ -16,7 +17,7 @@ interface UploadResult {
     files: string[];
 }
 
-export function FileUpload({ onUploadComplete, onClose }: FileUploadProps) {
+export function FileUpload({ onUploadComplete, onClose, authHeaders }: FileUploadProps) {
     const [isDragging, setIsDragging] = useState(false);
     const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
     const [isUploading, setIsUploading] = useState(false);
@@ -50,7 +51,6 @@ export function FileUpload({ onUploadComplete, onClose }: FileUploadProps) {
         if (files.length > 0) {
             processFiles(files);
         }
-        // Reset input so the same file can be selected again
         if (fileInputRef.current) {
             fileInputRef.current.value = "";
         }
@@ -60,7 +60,6 @@ export function FileUpload({ onUploadComplete, onClose }: FileUploadProps) {
         setIsUploading(true);
         setUploadResult(null);
 
-        // Separate PDFs and ZIPs
         const pdfFiles = files.filter(f => f.name.toLowerCase().endsWith(".pdf"));
         const zipFiles = files.filter(f => f.name.toLowerCase().endsWith(".zip"));
         const otherFiles = files.filter(
@@ -82,6 +81,7 @@ export function FileUpload({ onUploadComplete, onClose }: FileUploadProps) {
 
                 const res = await fetch("http://localhost:8000/upload", {
                     method: "POST",
+                    headers: authHeaders(),
                     body: formData,
                 });
 
@@ -97,7 +97,7 @@ export function FileUpload({ onUploadComplete, onClose }: FileUploadProps) {
             }
         }
 
-        // Upload ZIPs (one at a time)
+        // Upload ZIPs
         for (const zipFile of zipFiles) {
             try {
                 const formData = new FormData();
@@ -105,6 +105,7 @@ export function FileUpload({ onUploadComplete, onClose }: FileUploadProps) {
 
                 const res = await fetch("http://localhost:8000/upload-zip", {
                     method: "POST",
+                    headers: authHeaders(),
                     body: formData,
                 });
 
@@ -120,7 +121,6 @@ export function FileUpload({ onUploadComplete, onClose }: FileUploadProps) {
             }
         }
 
-        // Determine result
         if (allUploadedPaths.length > 0) {
             setUploadResult({
                 status: "success",
@@ -214,7 +214,6 @@ export function FileUpload({ onUploadComplete, onClose }: FileUploadProps) {
                         className="hidden"
                     />
 
-                    {/* Size limits info */}
                     <p className="text-xs text-stone-400 dark:text-slate-500 mt-3 text-center">
                         Max 50 MB per PDF · Max 200 MB per ZIP
                     </p>

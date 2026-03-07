@@ -13,12 +13,12 @@ os.makedirs(UPLOADS_DIR, exist_ok=True)
 
 class StorageProvider(ABC):
     @abstractmethod
-    def list_files(self) -> List[dict]:
+    def list_files(self, user_id: Optional[str] = None) -> List[dict]:
         """List all PDF files in the storage. Returns dicts with filename, path, source."""
         pass
 
     @abstractmethod
-    def get_file_path(self, filename: str) -> str:
+    def get_file_path(self, filename: str, user_id: Optional[str] = None) -> str:
         """Get the absolute path or URL for a file."""
         pass
 
@@ -27,10 +27,16 @@ class LocalStorageProvider(StorageProvider):
     def __init__(self, base_dir: str = "library"):
         self.base_dir = os.path.abspath(base_dir)
 
-    def list_files(self) -> List[dict]:
+    def _user_upload_dir(self, user_id: str) -> str:
+        """Get the upload directory for a specific user."""
+        user_dir = os.path.join(UPLOADS_DIR, user_id)
+        os.makedirs(user_dir, exist_ok=True)
+        return user_dir
+
+    def list_files(self, user_id: Optional[str] = None) -> List[dict]:
         results = []
 
-        # 1. Library files (existing LIBRARY_PATH)
+        # 1. Library files (shared — always visible to all users)
         if os.path.isdir(self.base_dir):
             lib_files = glob.glob(os.path.join(self.base_dir, "**/*.pdf"), recursive=True)
             for f in lib_files:
@@ -41,11 +47,12 @@ class LocalStorageProvider(StorageProvider):
                     "source": "library",
                 })
 
-        # 2. Uploaded files
-        if os.path.isdir(UPLOADS_DIR):
-            upload_files = glob.glob(os.path.join(UPLOADS_DIR, "**/*.pdf"), recursive=True)
+        # 2. Uploaded files (per-user only)
+        if user_id:
+            user_dir = self._user_upload_dir(user_id)
+            upload_files = glob.glob(os.path.join(user_dir, "**/*.pdf"), recursive=True)
             for f in upload_files:
-                rel = os.path.relpath(f, UPLOADS_DIR)
+                rel = os.path.relpath(f, user_dir)
                 results.append({
                     "filename": os.path.basename(f),
                     "path": f"uploads/{rel}",
@@ -54,13 +61,16 @@ class LocalStorageProvider(StorageProvider):
 
         return results
 
-    def get_file_path(self, filename: str) -> str:
+    def get_file_path(self, filename: str, user_id: Optional[str] = None) -> str:
         """Resolve a file path — supports both library and uploads."""
         # Check if path starts with 'uploads/'
         if filename.startswith("uploads/"):
+            if not user_id:
+                raise ValueError("User ID required for uploaded files")
             rel = filename[len("uploads/"):]
-            full_path = os.path.abspath(os.path.join(UPLOADS_DIR, rel))
-            if not full_path.startswith(os.path.abspath(UPLOADS_DIR)):
+            user_dir = self._user_upload_dir(user_id)
+            full_path = os.path.abspath(os.path.join(user_dir, rel))
+            if not full_path.startswith(os.path.abspath(user_dir)):
                 raise ValueError("Access denied")
             return full_path
 
@@ -70,32 +80,34 @@ class LocalStorageProvider(StorageProvider):
             raise ValueError("Access denied")
         return full_path
 
-    def save_uploaded_file(self, file_content: bytes, original_filename: str) -> str:
+    def save_uploaded_file(self, file_content: bytes, original_filename: str, user_id: str) -> str:
         """Save an uploaded PDF file. Returns the relative path (uploads/...)."""
-        # Sanitize filename — keep original name but ensure no path traversal
         safe_name = os.path.basename(original_filename)
         if not safe_name.lower().endswith(".pdf"):
             raise ValueError("Only PDF files are allowed")
 
+        user_dir = self._user_upload_dir(user_id)
+        dest_path = os.path.join(user_dir, safe_name)
+
         # If file already exists, make it unique
-        dest_path = os.path.join(UPLOADS_DIR, safe_name)
         if os.path.exists(dest_path):
             name, ext = os.path.splitext(safe_name)
             safe_name = f"{name}_{uuid.uuid4().hex[:8]}{ext}"
-            dest_path = os.path.join(UPLOADS_DIR, safe_name)
+            dest_path = os.path.join(user_dir, safe_name)
 
         with open(dest_path, "wb") as f:
             f.write(file_content)
 
         return f"uploads/{safe_name}"
 
-    def save_zip(self, file_content: bytes, original_filename: str) -> List[str]:
+    def save_zip(self, file_content: bytes, original_filename: str, user_id: str) -> List[str]:
         """Extract PDFs from a ZIP file. Returns list of relative paths (uploads/...)."""
         if not original_filename.lower().endswith(".zip"):
             raise ValueError("Only ZIP files are allowed")
 
-        # Save ZIP to temp location
-        temp_zip = os.path.join(UPLOADS_DIR, f"_temp_{uuid.uuid4().hex}.zip")
+        user_dir = self._user_upload_dir(user_id)
+        temp_zip = os.path.join(user_dir, f"_temp_{uuid.uuid4().hex}.zip")
+
         try:
             with open(temp_zip, "wb") as f:
                 f.write(file_content)
@@ -111,19 +123,18 @@ class LocalStorageProvider(StorageProvider):
                     if any(part.startswith(".") or part == "__MACOSX" for part in member.split("/")):
                         continue
 
-                    # Extract with directory structure preserved
                     # Sanitize path to prevent zip slip
                     safe_path = os.path.normpath(member)
                     if safe_path.startswith("..") or os.path.isabs(safe_path):
                         continue
 
-                    dest = os.path.join(UPLOADS_DIR, safe_path)
+                    dest = os.path.join(user_dir, safe_path)
 
                     # Handle duplicate names
                     if os.path.exists(dest):
                         name, ext = os.path.splitext(safe_path)
                         safe_path = f"{name}_{uuid.uuid4().hex[:8]}{ext}"
-                        dest = os.path.join(UPLOADS_DIR, safe_path)
+                        dest = os.path.join(user_dir, safe_path)
 
                     os.makedirs(os.path.dirname(dest), exist_ok=True)
 
@@ -134,20 +145,20 @@ class LocalStorageProvider(StorageProvider):
 
             return extracted_paths
         finally:
-            # Clean up temp ZIP
             if os.path.exists(temp_zip):
                 os.remove(temp_zip)
 
-    def delete_uploaded_file(self, file_path: str) -> bool:
-        """Delete an uploaded file. Only works for files in uploads/."""
+    def delete_uploaded_file(self, file_path: str, user_id: str) -> bool:
+        """Delete an uploaded file. Only works for files in the user's uploads."""
         if not file_path.startswith("uploads/"):
             raise ValueError("Can only delete uploaded files")
 
         rel = file_path[len("uploads/"):]
-        full_path = os.path.abspath(os.path.join(UPLOADS_DIR, rel))
+        user_dir = self._user_upload_dir(user_id)
+        full_path = os.path.abspath(os.path.join(user_dir, rel))
 
-        # Security check
-        if not full_path.startswith(os.path.abspath(UPLOADS_DIR)):
+        # Security check — must be within user's directory
+        if not full_path.startswith(os.path.abspath(user_dir)):
             raise ValueError("Access denied")
 
         if not os.path.exists(full_path):
@@ -157,7 +168,7 @@ class LocalStorageProvider(StorageProvider):
 
         # Clean up empty parent directories
         parent = os.path.dirname(full_path)
-        while parent != os.path.abspath(UPLOADS_DIR):
+        while parent != os.path.abspath(user_dir):
             if not os.listdir(parent):
                 os.rmdir(parent)
                 parent = os.path.dirname(parent)
@@ -169,5 +180,4 @@ class LocalStorageProvider(StorageProvider):
 
 # Factory to get the correct provider
 def get_storage_provider() -> StorageProvider:
-    # Future: Check env var to return CloudStorageProvider
     return LocalStorageProvider()
