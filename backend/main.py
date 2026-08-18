@@ -25,7 +25,7 @@ app.add_middleware(
 
 # USER CONFIG: Point to your library folder
 # Hardcoded to your MAPY library
-LIBRARY_PATH = "/Users/ayush/Desktop/self/MAPY-first year"
+LIBRARY_PATH = r"C:\Users\Ayush\Desktop\MAPY-first year"
 storage = LocalStorageProvider(base_dir=LIBRARY_PATH)
 
 class BookResponse(BaseModel):
@@ -63,7 +63,7 @@ def rag_health_check():
             "status": "ok",
             "api_key_set": api_key_set,
             "api_provider": "Groq (free tier)",
-            "llm_model": "llama-3.1-8b-instant",
+            "llm_model": "openai/gpt-oss-120b",
             "embeddings": "HuggingFace (free, local)",
             "documents_in_store": doc_count
         }

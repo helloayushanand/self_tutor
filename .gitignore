@@ -41,3 +41,8 @@ yarn-error.log*
 # Test files
 hello world
 
+#npm
+node-v24.19.0-win-x64/
+node-v24.19.0-win-x64.zip
+backend/__pycache__/
+

@@ -38,7 +38,7 @@ class RAGEngine:
         # Available models: llama-3.1-8b-instant (fast), llama-3.1-70b-versatile (better quality), mixtral-8x7b-32768
         self.llm = ChatGroq(
             groq_api_key=os.getenv("GROQ_API_KEY"),
-            model_name="llama-3.1-8b-instant",  # Fast and free tier friendly
+            model_name="openai/gpt-oss-120b",  # Fast and free tier friendly
             temperature=0.3,
         )
         
